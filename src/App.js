@@ -7,14 +7,13 @@ const socket = io("http://localhost:5000");
 const App = () => {
   const [currentUserId, setCurrentUserId] = useState(null);
   const [peerId, setPeerId] = useState(null);
-  const [remotePeerId, setRemotePeerId] = useState("");
+  const [remotePeerId, setRemotePeerId] = useState("Waiting...");
   const [call, setCall] = useState(null);
   const localVideoRef = useRef(null);
   const remoteVideoRef = useRef(null);
   const peerRef = useRef(null);
   const streamRef = useRef(null);
 
-  console.log(peerId);
   useEffect(() => {
     const peer = new Peer();
     peerRef.current = peer;
@@ -40,12 +39,23 @@ const App = () => {
         });
     });
 
+    // ✅ Fix: Listen for matchFound event
+    socket.on("matchFound", ({ peerId }) => {
+      setRemotePeerId(peerId);
+      console.log("Matched with:", peerId);
+    });
+
     return () => {
       peer.disconnect();
     };
   }, []);
 
   const handleCallUser = () => {
+    if (remotePeerId === "Waiting...") {
+      alert("No match found yet!");
+      return;
+    }
+
     navigator.mediaDevices
       .getUserMedia({ video: true, audio: true })
       .then((stream) => {
@@ -72,23 +82,22 @@ const App = () => {
   };
 
   return (
-    <div>
+    <div className="bg-black w-screen h-screen overflow-clip text-slate-300">
+      <nav className="bg-stone-900 p-8">
+        <h1 className="text-xl font-semibold">Match-ur-Tribe</h1>
+      </nav>
+
       <h2>Your ID: {currentUserId}</h2>
-      <input
-        type="text"
-        placeholder="Enter Peer ID to call"
-        value={remotePeerId}
-        onChange={(e) => setRemotePeerId(e.target.value)}
-      />
+      <h2>Matched with: {remotePeerId}</h2>
+
       <button onClick={handleCallUser}>Start Call</button>
       <button onClick={handleEndCall}>End Call</button>
 
-      <div>
+      <div className="max-w-md">
         <h3>Local Video</h3>
         <video ref={localVideoRef} autoPlay playsInline muted />
       </div>
-
-      <div>
+      <div className="max-w-md">
         <h3>Remote Video</h3>
         <video ref={remoteVideoRef} autoPlay playsInline />
       </div>
