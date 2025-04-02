@@ -1,237 +1,165 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { io } from "socket.io-client";
-import Peer from "peerjs"; // For WebRTC
-import { IoLogOutOutline } from "react-icons/io5";
-import { SlCallEnd } from "react-icons/sl";
-import { RxTrackNext } from "react-icons/rx";
-import { CiMicrophoneOff, CiMicrophoneOn } from "react-icons/ci";
+import React from "react";
 import "./App.css";
 import { FaMusic } from "react-icons/fa";
+import { IoMdMusicalNotes } from "react-icons/io";
+import { GoPeople } from "react-icons/go";
+import { CiMicrophoneOn } from "react-icons/ci";
 
-// Connect to the server
-const socket = io("http://localhost:5000");
-
-const App = () => {
-  const localVideoRef = useRef(null);
-  const remoteVideoRef = useRef(null);
-  const [peerConnection, setPeerConnection] = useState(null);
-  const [stream, setStream] = useState(null);
-  const [isMicMuted, setIsMicMuted] = useState(false);
-  const [partnerSocketId, setPartnerSocketId] = useState(""); 
-
-  const handleAnswer = useCallback((answer) => {
-    if (peerConnection) {
-      peerConnection.setRemoteDescription(new RTCSessionDescription(answer)); 
-    }
-  }, [peerConnection]);
-
-  const handleIceCandidate = useCallback((candidate) => {
-    if (peerConnection) {
-      peerConnection.addIceCandidate(new RTCIceCandidate(candidate)); 
-    }
-  }, [peerConnection]);
-
-  const startCall = useCallback((partnerSocketId) => {
-    const pc = new RTCPeerConnection();
-  
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-  
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("ice-candidate", event.candidate, partnerSocketId); 
-      }
-    };
-  
-    pc.ontrack = (event) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0]; 
-      }
-    };
-  
-    pc.createOffer().then((offer) => {
-      return pc.setLocalDescription(offer);
-    }).then(() => {
-      socket.emit("offer", pc.localDescription, partnerSocketId);
-    }).catch((err) => {
-      console.error("Error creating offer:", err);
-    });
-  
-    setPeerConnection(pc); 
-  }, [stream]);
-
-  const handleOffer = useCallback((offer, fromSocketId) => {
-    const pc = new RTCPeerConnection();
-  
-    // Set up local media stream
-    stream.getTracks().forEach((track) => pc.addTrack(track, stream));
-  
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socket.emit("ice-candidate", event.candidate, fromSocketId); 
-      }
-    };
-  
-    pc.ontrack = (event) => {
-      if (remoteVideoRef.current) {
-        remoteVideoRef.current.srcObject = event.streams[0]; 
-      }
-    };
-  
-    pc.setRemoteDescription(new RTCSessionDescription(offer)).then(() => {
-      return pc.createAnswer()
-    }).then((answer) => {
-      return pc.setLocalDescription(answer);
-    }).then(() => {
-      socket.emit("answer", pc.localDescription, fromSocketId);
-    }).catch((err) => {
-      console.error("Error handling offer:", err);
-    });
-  
-    setPeerConnection(pc); 
-  }, [stream]);
-
-  useEffect(() => {
-    socket.on("paired", (partnerSocketId) => {
-      console.log(`Paired with user: ${partnerSocketId}`);
-      startCall(partnerSocketId); 
-    });
-
-    socket.on("offer", (offer, fromSocketId) => {
-      console.log(`Received offer from ${fromSocketId}`);
-      handleOffer(offer, fromSocketId); 
-    });
-
-    socket.on("answer", (answer) => {
-      console.log("Received answer:", answer);
-      handleAnswer(answer); 
-    });
-
-    socket.on("ice-candidate", (candidate) => {
-      console.log("Received ICE candidate:", candidate);
-      handleIceCandidate(candidate); 
-    });
-
-    return () => {
-      socket.off("servermessage");
-      socket.off("paired");
-      socket.off("offer");
-      socket.off("answer");
-      socket.off("ice-candidate");
-    };
-  }, [handleAnswer, handleIceCandidate, handleOffer, startCall]);
-
-  const handleCallUser = async () => {
-    try {
-      const webCamStream = await navigator.mediaDevices.getUserMedia({
-        video: true,
-        audio: true,
-      });
-
-      if (localVideoRef.current) {
-        localVideoRef.current.srcObject = webCamStream;
-      }
-
-      setStream(webCamStream);
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const toggleMic = () => {
-    if (stream) {
-      const track = stream.getTracks().find((track) => track.kind === "audio");
-      if (track) {
-        track.enabled = !track.enabled;
-        setIsMicMuted(!track.enabled);
-      }
-    }
-  };
-
-  const handleNext = () => {};
-
-  const handleConnectWithPartner = () => {
-    if (partnerSocketId) {
-      startCall(partnerSocketId); 
-    }
-  };
-
+export default function App() {
   return (
-    <div className="relative w-screen h-screen overflow-hidden bg-black text-slate-300">
-      <nav className="absolute top-0 left-0 w-full flex items-center justify-between bg-neutral-900 p-5 border-b-[1px] border-b-slate-800 z-20">
-        <div className="flex items-center space-x-5">
-          <FaMusic
-            size={30}
-            color="white"
-            className="p-1 rounded-md bg-cyan-500"
-          />
-          <h1 className="text-xl font-semibold text-cyan-500">GrooveSpace</h1>
-        </div>
-        <IoLogOutOutline size={25} color="white" className="cursor-pointer" />
-      </nav>
-
-      <div className="flex items-center justify-center mt-16 space-x-8 md:mt-24">
-        <div className="w-full max-w-xs md:max-w-md p-4 rounded-lg h-[70vh] bg-neutral-900 flex flex-col justify-center items-center">
-          <video
-            ref={localVideoRef}
-            autoPlay
-            playsInline
-            className="rounded-lg"
-          />
-          <div className="flex items-center w-full mt-6 space-x-4 justify-evenly">
-            <CiMicrophoneOn
-              size={25}
+    <>
+      <nav className="flex items-center p-4 bg-transparent border rounded-lg shadow-lg backdrop-blur-lg border-white/20 justify-evenly">
+        <div>
+          <div className="flex items-center space-x-3">
+            <FaMusic
+              size={35}
               color="white"
-              cursor="pointer"
-              onClick={toggleMic}
+              className="p-2 rounded-full bg-gradient-to-r from-purple-500 via-pink-500 to-pink-700"
             />
-            <CiMicrophoneOff
-              size={25}
-              color="white"
-              cursor="pointer"
-              onClick={toggleMic}
-            />
-            <SlCallEnd
-              size={25}
-              color="red"
-              cursor="pointer"
-              onClick={handleCallUser}
-            />
-            <RxTrackNext
-              size={25}
-              color="white"
-              cursor="pointer"
-              onClick={handleNext}
-            />
+            <h1 className="text-xl font-bold">
+              Sing<span className="text-pink-500">Along</span>
+            </h1>
           </div>
         </div>
 
-        <div className="w-full max-w-xs md:max-w-md p-4 rounded-lg h-[70vh] bg-neutral-900">
-          <video
-            ref={remoteVideoRef}
-            autoPlay
-            playsInline
-            className="rounded-lg"
-          />
+        <ul className="flex items-center space-x-8">
+          <li className="font-semibold transition-colors duration-500 ease-in-out cursor-pointer hover:text-purple-500">
+            Home
+          </li>
+          <li className="font-semibold transition-colors duration-500 ease-in-out cursor-pointer hover:text-purple-500">
+            Home
+          </li>
+          <li className="font-semibold transition-colors duration-500 ease-in-out cursor-pointer hover:text-purple-500">
+            Home
+          </li>
+        </ul>
+
+        <div>
+          <button className="text-white font-semibold bg-gradient-to-r from-purple-500 via-pink-500 to-pink-700 px-7 py-1.5 rounded-full">
+            Signin
+          </button>
+        </div>
+      </nav>
+
+      <div className="relative w-[90vw]  h-[60vh] my-10 p-10 mx-auto overflow-hidden bg-gradient-to-br from-purple-500 to-pink-500 rounded-3xl">
+        <div className="absolute inset-0 grid grid-cols-10 opacity-20 ">
+          {Array.from({ length: 120 }).map((_, i) => (
+            <div key={i} className="rounded-full bg-black/10">
+              <img
+                src="data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTAwIiBoZWlnaHQ9IjEwMCIgdmlld0JveD0iMCAwIDEwMCAxMDAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+CiAgPHBhdGggZD0iTTExIDUuNUgzM1YzMy41SDExVjUuNVoiIGZpbGw9IndoaXRlIiBmaWxsLW9wYWNpdHk9IjAuMDUiLz4KICA8cGF0aCBmaWxsLXJ1bGU9ImV2ZW5vZGQiIGNsaXAtcnVsZT0iZXZlbm9kZCIgZD0iTTUwIDc1QzY0LjA0NTcgNzUgNzUuNSA2My41NDU3IDc1LjUgNDkuNUM3NS41IDM1LjQ1NDMgNjQuMDQ1NyAyNCA1MCAyNEMzNS45NTQzIDI0IDI0LjUgMzUuNDU0MyAyNC41IDQ5LjVDMjQuNSA2My41NDU3IDM1Ljk1NDMgNzUgNTAgNzVaIiBzdHJva2U9IndoaXRlIiBzdHJva2Utb3BhY2l0eT0iMC4wNSIvPgogIDxjaXJjbGUgY3g9Ijc1IiBjeT0iNzUiIHI9IjE1IiBmaWxsPSJ3aGl0ZSIgZmlsbC1vcGFjaXR5PSIwLjA1Ii8+Cjwvc3ZnPgo="
+                alt=""
+              />
+            </div>
+          ))}
+        </div>
+
+        <div className="relative text-center text-white md:mt-24">
+          <h1 className="text-4xl font-bold">
+            Sing Together With Friends, Anywhere in the World
+          </h1>
+          <p className="mt-4 text-lg">
+            Join the ultimate karaoke experience with real-time video chat,
+            intelligent scoring, and thousands of songs to choose from.
+          </p>
+
+          <div className="flex justify-center gap-4 mt-6">
+            <button className="flex items-center gap-2 px-6 py-3 font-semibold text-purple-600 bg-white rounded-full shadow-md">
+              🎵 Create Room
+            </button>
+            <button className="flex items-center gap-2 px-6 py-3 font-semibold text-white rounded-full shadow-md cursor-not-allowed bg-white/30">
+              👥 Join a Room
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="absolute flex flex-col items-center space-y-2 transform -translate-x-1/2 bottom-10 left-1/2">
-        <input
-          type="text"
-          placeholder="Enter Partner's Socket ID"
-          value={partnerSocketId}
-          onChange={(e) => setPartnerSocketId(e.target.value)}
-          className="p-2 text-white bg-gray-800 rounded-md"
-        />
-        <button
-          onClick={handleConnectWithPartner}
-          className="px-4 py-2 text-white rounded-md bg-cyan-500"
-        >
-          Connect with Partner
-        </button>
-      </div>
-    </div>
-  );
-};
+      <section className="w-[90vw] mx-auto my-10">
+        <h2 className="text-2xl font-bold text-transparent bg-gradient-to-r from-purple-400 via-pink-500 to-pink-500 bg-clip-text">
+          Duet Challenges{" "}
+          <span className="px-2 py-1 ml-2 text-xs text-white bg-red-500 rounded-full">
+            NEW
+          </span>
+        </h2>
 
-export default App;
+        <div className="grid grid-cols-4 gap-4 mt-4 md:grid-cols-2 lg:grid-cols-1">
+          {[
+            {
+              icon: (
+                <IoMdMusicalNotes
+                  size={25}
+                  color="white"
+                  className="rounded-full p-1.5 bg-white/30"
+                />
+              ),
+              tittle: "Browse Songs",
+              color: "#976df7",
+            },
+            {
+              icon: (
+                <IoMdMusicalNotes
+                  size={25}
+                  color="white"
+                  className="rounded-full p-1.5 bg-white/30"
+                />
+              ),
+              tittle: "Create Room",
+              color: "#ee5da4",
+            },
+            {
+              icon: (
+                <IoMdMusicalNotes
+                  size={25}
+                  color="white"
+                  className="rounded-full p-1.5 bg-white/30"
+                />
+              ),
+              tittle: "Join Duets",
+              color: "#14bad6",
+            },
+            {
+              icon: (
+                <IoMdMusicalNotes
+                  size={25}
+                  color="white"
+                  className="rounded-full p-1.5 bg-white/30"
+                />
+              ),
+              tittle: "My Library",
+              color: "#fbc22f",
+            },
+          ].map((i, id) => (
+            <div
+              key={id}
+              className={`p-5 flex flex-col items-center justify-center space-y-3 text-white bg-[${i.color}] rounded-lg shadow-md p-5`}
+            >
+              {i.icon}
+              <h3 className="text-lg font-semibold">{i.tittle}</h3>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <footer className="w-full px-4 py-6 bg-white border-t border-gray-200 md:px-10">
+        <div className="flex flex-col items-center justify-between mx-auto text-sm text-gray-600 max-w-7xl md:flex-row">
+          <div className="flex flex-col items-center md:items-start">
+            <h1 className="text-lg font-bold text-gray-800">
+              Sing<span className="text-pink-500">Along</span>
+            </h1>
+            <p className="text-gray-500">Sing together, anywhere.</p>
+          </div>
+
+          <div className="flex mt-4 space-x-6 md:mt-0">
+            <h1 className="hover:text-gray-800">About</h1>
+            <h1 className="hover:text-gray-800">Privacy</h1>
+            <h1 className="hover:text-gray-800">Terms</h1>
+            <h1 className="hover:text-gray-800">Contact</h1>
+          </div>
+
+          <div className="mt-4 text-center md:mt-0 md:text-right">
+            <p>© 2025 SingAlong. All rights reserved.</p>
+          </div>
+        </div>
+      </footer>
+    </>
+  );
+}
